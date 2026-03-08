@@ -14,15 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Build Spring Boot JAR
-        run: mvn clean package -DskipTests
-
       - name: Login to Azure
         uses: azure/login@v1
         with:
@@ -32,21 +23,24 @@ jobs:
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build Docker image
-        run: docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/springboot-app:${{ github.sha }} .
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/springboot-app:${{ github.sha }} .
 
       - name: Push Docker image
-        run: docker push ${{ secrets.ACR_LOGIN_SERVER }}/springboot-app:${{ github.sha }}
+        run: |
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/springboot-app:${{ github.sha }}
 
       - name: Set AKS context
         run: |
           az aks get-credentials \
-            --resource-group ${{ secrets.RESOURCE_GROUP }} \
-            --name ${{ secrets.AKS_CLUSTER }}
+          --resource-group ${{ secrets.RESOURCE_GROUP }} \
+          --name ${{ secrets.AKS_CLUSTER }}
+
+      - name: Inject image tag into deployment
+        run: |
+          sed -i "s|IMAGE_PLACEHOLDER|${{ secrets.ACR_LOGIN_SERVER }}/springboot-app:${{ github.sha }}|g" k8s/deployment.yaml
 
       - name: Deploy to AKS
         run: |
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
-          kubectl set image deployment/springboot-app \
-            springboot-app=${{ secrets.ACR_LOGIN_SERVER }}/springboot-app:${{ github.sha }}
-
